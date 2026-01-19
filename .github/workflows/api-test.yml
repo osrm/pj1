@@ -37,7 +37,7 @@ jobs:
       # 4. 네이버 API 테스트
       - name: Test Naver API
         run: |
-          python scripts/test_naver_api.py
+          PYTHONPATH=. python scripts/test_naver_api.py
         env:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}

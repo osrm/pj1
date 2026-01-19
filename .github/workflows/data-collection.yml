@@ -53,7 +53,7 @@ jobs:
       # 5. 3-Track 데이터 수집
       - name: Run 3-Track data collection
         run: |
-          python scripts/run_all_sqlite.py ${{ github.event.inputs.max_results || '100' }}
+          PYTHONPATH=. python scripts/run_all_sqlite.py ${{ github.event.inputs.max_results || '100' }}
         env:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
