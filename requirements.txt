@@ -1,5 +1,4 @@
 # Python
-python>=3.10
 
 # Database
 sqlalchemy==2.0.25
