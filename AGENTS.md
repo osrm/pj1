@@ -15,10 +15,9 @@ pip install -r requirements.txt
 ```bash
 # 네이버 API 연결 테스트
 python scripts/test_naver_api.py
-
-# 특정 테스트 실행 (pytest가 설정된 경우)
-pytest tests/ -k test_name -v
 ```
+
+**참고**: 이 프로젝트는 pytest를 사용하지 않습니다. 테스트는 개별 스크립트로 실행합니다.
 
 ### Run Application
 ```bash
@@ -49,6 +48,67 @@ python -c "from database.migration_sqlite import create_tables; from database.co
 
 ---
 
+## Private Repo Database Storage
+
+### Why Private Repo?
+DB 파일(`cat_data.db`)을 public repo에 저장하면 데이터 노출 위험이 있습니다. `pj1_DB` private repo를 별도로 생성하여 DB를 저장합니다.
+
+### Method 1: GitHub Actions Direct Clone/Push (RECOMMENDED)
+
+#### Step 1: Create pj1_DB Private Repo
+```bash
+# 새로운 private repo 생성
+# https://github.com/new
+```
+
+#### Step 2: Create GitHub Token for pj1_DB
+1. GitHub → Settings → Developer Settings → Personal Access Tokens → Tokens (classic)
+2. Generate new token → **repo** scope 선택 (필수)
+3. Token 복사
+
+#### Step 3: Add Token to pj1 Secrets
+1. `pj1` repo → Settings → Secrets and variables → Actions
+2. New secret: `PJ1_DB_TOKEN` = (생성한 토큰 값)
+3. New secret: `PJ1_DB_REPO` = `osrm/pj1_DB` (당신의 repo 경로)
+
+#### Step 4: Modify Workflow to Push to pj1_DB
+
+```yaml
+# .github/workflows/data-collection.yml에 추가 (Artifact 업로드 이전)
+- name: Clone pj1_DB private repo
+  run: |
+    git clone https://${{ secrets.PJ1_DB_TOKEN }}@github.com/${{ secrets.PJ1_DB_REPO }}.git pj1_DB
+
+- name: Copy DB to pj1_DB
+  run: cp cat_data.db pj1_DB/
+
+- name: Commit and push to pj1_DB
+  working-directory: ./pj1_DB
+  run: |
+    git config user.email "action@github.com"
+    git config user.name "GitHub Action"
+    git add cat_data.db
+    git diff --quiet && git diff --staged --quiet || git commit -m "Update DB from pj1 workflow"
+    git push origin main
+```
+
+### Method 2: Git Submodule
+
+```bash
+# 현재 잘못 복사된 디렉토리 삭제
+rm -rf pj1_DB
+
+# submodule로 추가
+git submodule add https://github.com/osrm/pj1_DB.git pj1_DB
+
+# submodule 초기화
+git submodule update --init --recursive
+```
+
+**주의**: Submodule 방식은 pj1_DB repo의 변경사항을 자동으로 pull하지 않습니다. 별도 관리가 필요합니다.
+
+---
+
 ## Code Style Guidelines
 
 ### Imports
@@ -56,6 +116,7 @@ python -c "from database.migration_sqlite import create_tables; from database.co
 # 1. 표준 라이브러리
 import os
 import re
+import logging
 from typing import Dict, List, Optional
 
 # 2. 서드파티 라이브러리
@@ -66,7 +127,7 @@ from dotenv import load_dotenv
 # 3. 로컬 임포트 (프로젝트 내부)
 from config.settings import log_config
 from models.food import Food
-from utils.logger import setup_logger
+from fetchers.naver_api import NaverShoppingAPI
 ```
 
 ### Type Hints
@@ -185,13 +246,14 @@ except Exception as e:
 ```
 
 ### Logging
-- `utils/logger.py`의 `setup_logger()` 사용
-- `logger.debug()`: 디버깅 정보
-- `logger.info()`: 일반 진행 상황
-- `logger.warning()`: 경고 (예외 처리 가능)
-- `logger.error()`: 에러 (작업 실패)
-
 ```python
+# 방법 1: 표준 logging 모듈 사용 (현재 프로젝트 기본)
+import logging
+
+logging.basicConfig(level=log_config.level, format=log_config.format)
+logger = logging.getLogger(__name__)
+
+# 방법 2: utils/logger.py 사용 (선택 사항)
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -222,7 +284,7 @@ log_config = LogConfig()
 ```
 
 ### String Processing
-- HTML 태그 제거: `re.sub(r'<[^>]+>', '', text)`
+- HTML 태그 제거: `re.sub(r'<[^>]+>', '', text)` 또는 `text.replace('<b>', '').replace('</b>', '')`
 - 공백 정규화: `re.sub(r'\s+', ' ', text).strip()`
 - 유니코드 정규화: `unicodedata.normalize('NFC', text)`
 - 브랜드명 매칭 시 대소문자 무시
@@ -273,7 +335,7 @@ pj1/
 3. **중복 제거**: `naver_product_id` 기반 중복 제거 필수
 4. **텍스트 정규화**: `TextNormalizer` 클래스 사용하여 브랜드명, 사료명, 가격 정규화
 5. **세션 관리**: DB 세션 사용 후 반드시 `close()` 또는 context manager 사용
-6. **GitHub Actions**: 매일 자정(UTC 15:00) 자동 실행, Artifact로 DB 파일 저장
+6. **GitHub Actions**: 매일 자정(UTC 15:00) 자동 실행, Artifact로 DB 파일 저장 + private repo push
 
 ---
 
@@ -292,4 +354,86 @@ DATABASE_URL=sqlite:///cat_data.db
 MAX_RETRIES=3
 REQUEST_DELAY=1
 MAX_CONCURRENT_REQUESTS=10
+```
+
+GitHub Secrets for private repo DB storage:
+```env
+PJ1_DB_TOKEN=your_github_token_with_repo_scope
+PJ1_DB_REPO=username/pj1_DB
+```
+
+---
+
+## GitHub Actions Workflow Pattern
+
+```yaml
+name: Cat-Data Lab Data Collection
+
+on:
+  schedule:
+    - cron: '0 15 * * *'  # 매일 자정 한국시간
+  workflow_dispatch:
+    inputs:
+      max_results:
+        description: '브랜드당/가격대별 최대 결과 수'
+        required: false
+        default: '100'
+
+jobs:
+  collect-data:
+    runs-on: ubuntu-latest
+    steps:
+      # 체크아웃
+      - uses: actions/checkout@v4
+
+      # Python 설정
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      # 의존성 설치
+      - run: pip install -r requirements.txt
+
+      # API 테스트
+      - run: PYTHONPATH=. python scripts/test_naver_api.py
+        env:
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+
+      # 데이터 수집
+      - run: PYTHONPATH=. python scripts/run_all_sqlite.py ${{ github.event.inputs.max_results || '100' }}
+        env:
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+
+      # pj1_DB private repo에 DB 저장
+      - name: Clone pj1_DB private repo
+        run: git clone https://${{ secrets.PJ1_DB_TOKEN }}@github.com/${{ secrets.PJ1_DB_REPO }}.git pj1_DB
+
+      - name: Copy DB to pj1_DB
+        run: cp cat_data.db pj1_DB/
+
+      - name: Commit and push to pj1_DB
+        working-directory: ./pj1_DB
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git add cat_data.db
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update DB from pj1 workflow"
+          git push origin main
+
+      # brands.json 업데이트 커밋
+      - name: Commit brands.json updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git diff --quiet brands.json || git add brands.json && git commit -m "Update brands.json [skip ci]" || echo "No changes"
+
+      # Artifact 업로드 (백업용)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cat-data-db-${{ github.run_number }}
+          path: cat_data.db
+          retention-days: 30
 ```
