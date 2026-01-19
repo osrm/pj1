@@ -1,4 +1,20 @@
-# Environment variables
+# pj1은 GitHub Actions만 실행하는 public repo입니다.
+# 실제 코드와 데이터는 pj1_DB private repo에 있습니다.
+
+# .github/workflows만 허용
+config/
+models/
+fetchers/
+processors/
+database/
+scripts/
+utils/
+requirements.txt
+brands.json
+*.md
+!AGENTS.md
+
+# 환경 변수
 .env
 
 # Database files

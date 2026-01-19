@@ -20,15 +20,19 @@ on:
 env:
   NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
   NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+  PJ1_DB_REPO: osrm/pj1_DB
 
 jobs:
   collect-data:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 코드 체크아웃
-      - name: Checkout code
+      # 1. pj1_DB private repo 체크아웃 (코드 + DB)
+      - name: Checkout pj1_DB private repo
         uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PJ1_DB_REPO }}
+          token: ${{ secrets.TOKEN1 }}
 
       # 2. Python 설정
       - name: Set up Python
@@ -70,8 +74,8 @@ jobs:
       # 7. 변경사항 커밋 (브랜드 사전 업데이트)
       - name: Commit brands.json updates
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
           git diff --quiet brands.json || git add brands.json && git commit -m "Update brands.json [skip ci]" || echo "No changes to brands.json"
 
       # 8. DB 파일을 Artifact로 저장
@@ -92,17 +96,15 @@ jobs:
           echo "=== 상위 5개 사료 ==="
           sqlite3 cat_data.db "SELECT f.name, b.name as brand, f.min_price FROM foods f LEFT JOIN brands b ON f.brand_id = b.id LIMIT 5;"
 
-      # 10. 변경사항 푸시
-      - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.ref }}
+      # 10. DB를 pj1_DB에 푸시
+      - name: Push to pj1_DB
+        run: git push origin main
 
       # 11. DB 파일을 Google Cloud Storage에 업로드 (선택)
-      # 필요한 경우 GCS 연동 추가
+
+      # 12. DB 파일을 Google Cloud Storage에 업로드 (선택)
       - name: Upload to GCS (optional)
-        if: false  # 사용 시 true로 변경
+        if: false
         uses: 'google-github-actions/upload-cloud-storage@v2'
         with:
           path: 'cat_data.db'
