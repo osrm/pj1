@@ -11,22 +11,25 @@ on:
 env:
   NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
   NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+  PJ1_DB_REPO: osrm/pj1_DB
 
 jobs:
   test-api:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 코드 체크아웃
-      - name: Checkout code
+      # 1. pj1_DB private repo 체크아웃
+      - name: Checkout pj1_DB private repo
         uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PJ1_DB_REPO }}
+          token: ${{ secrets.TOKEN1 }}
 
       # 2. Python 설정
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-          cache: 'pip'
 
       # 3. 의존성 설치
       - name: Install dependencies
