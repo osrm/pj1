@@ -32,7 +32,15 @@ for i, item in enumerate(results, 1):
     info = api.extract_food_info(item)
     print(f"\n[{i}] {info['name']}")
     print(f"    브랜드: {info['brand']}")
-    print(f"    가격: {info['min_price']:,} 원 ~ {info['max_price']:,} 원" if info['min_price'] else "    가격: 정보 없음")
+
+    # 가격 표시 (None 체크)
+    if info['min_price'] and info['max_price']:
+        print(f"    가격: {info['min_price']:,} 원 ~ {info['max_price']:,} 원")
+    elif info['min_price']:
+        print(f"    가격: {info['min_price']:,} 원")
+    else:
+        print("    가격: 정보 없음")
+
     print(f"    상품 ID: {info['naver_product_id']}")
 
 print("\n✅ 네이버 API 테스트 완료!")
